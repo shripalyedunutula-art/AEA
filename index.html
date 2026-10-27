@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUTO-BUILD 2D: CAD Blueprint Challenge</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=JetBrains+Mono:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Chakra Petch', sans-serif;
+            background-color: #030712;
+            color: #f3f4f6;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow-x: hidden;
+        }
+
+        .font-mono-tech {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Technical Blueprint Grid Pattern */
+        .blueprint-bg {
+            background-color: #030712;
+            background-image: 
+                linear-gradient(rgba(14, 165, 233, 0.12) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(14, 165, 233, 0.12) 1px, transparent 1px),
+                linear-gradient(rgba(14, 165, 233, 0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(14, 165, 233, 0.04) 1px, transparent 1px);
+            background-size: 50px 50px, 50px 50px, 10px 10px, 10px 10px;
+            background-position: -1px -1px, -1px -1px, -1px -1px, -1px -1px;
+        }
+
+        /* Glassmorphism Blueprint Panels */
+        .blueprint-card {
+            background: rgba(8, 15, 30, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(14, 165, 233, 0.3);
+            box-shadow: 0 0 15px rgba(14, 165, 233, 0.1);
+        }
+
+        .part-item {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+
+        .part-item:hover {
+            border-color: #38bdf8;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .part-item.selected {
+            border-color: #38bdf8 !important;
+            background-color: rgba(56, 189, 248, 0.15) !important;
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.6) !important;
+        }
+
+        .part-item.installed {
+            opacity: 0.4;
+            filter: grayscale(0.8);
+            cursor: default;
+            pointer-events: none;
+            border-color: #22c55e !important;
+        }
+
+        /* Canvas Styling */
+        #blueprint-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+
+        /* Tooltip */
+        #tooltip {
+            pointer-events: none;
+            transition: opacity 0.15s ease-in-out;
+            backdrop-filter: blur(8px);
+        }
+
+        /* Speed line background for running simulation */
+        @keyframes speedLines {
+            0% { background-position: 0 0; }
+            100% { background-position: -500px 0; }
+        }
+
+        .speed-anim {
+            animation: speedLines 0.5s linear infinite;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between blueprint-bg selection:bg-sky-500 selection:text-white">
+
+    <!-- 5-SECOND AUTOMOTIVE SPLASH / LOADING OVERLAY -->
+    <div id="splash-overlay" class="fixed inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center p-6 transition-opacity duration-700">
+        <div class="relative z-10 max-w-md w-full text-center flex flex-col items-center">
+            
+            <!-- Spinning Technical Blueprint Gear -->
+            <div class="relative mb-6">
+                <div class="w-24 h-24 rounded-full border-4 border-slate-800 border-t-sky-400 border-r-emerald-400 animate-spin"></div>
+                <div class="absolute inset-0 flex items-center justify-center">
+                    <i class="fa-solid fa-drafting-compass text-3xl text-sky-400"></i>
+                </div>
+            </div>
+
+            <!-- Title Header -->
+            <h1 class="text-2xl md:text-3xl font-bold text-white tracking-widest mb-1">
+                AUTO-BUILD <span class="text-sky-400">CAD 2D</span>
+            </h1>
+            <p class="text-xs text-slate-400 font-mono-tech tracking-widest uppercase mb-8">
+                30-SECOND FAST PIT STOP CHALLENGE
+            </p>
+
+            <!-- 5-Second Countdown Display -->
+            <div class="blueprint-card rounded-2xl p-6 w-full shadow-2xl mb-4 border border-sky-500/40">
+                <div class="text-xs font-mono-tech text-slate-400 uppercase tracking-widest mb-1">Calibrating CAD Canvas</div>
+                <div id="splash-countdown" class="text-5xl font-bold text-sky-400 mb-4 font-mono-tech animate-pulse">5</div>
+
+                <!-- Animated Progress Bar -->
+                <div class="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden border border-slate-700 p-0.5">
+                    <div id="splash-progress-bar" class="bg-gradient-to-r from-sky-500 to-emerald-400 h-full w-0 rounded-full transition-all duration-100 ease-linear"></div>
+                </div>
+            </div>
+
+            <p class="text-xs text-slate-500 font-mono-tech flex items-center gap-2">
+                <i class="fa-solid fa-gear animate-spin text-sky-400"></i> Initializing 5 Core Vehicle Components...
+            </p>
+        </div>
+    </div>
+
+    <!-- TOP HEADER / HUD -->
+    <header class="w-full bg-slate-950/90 border-b border-sky-500/30 backdrop-blur-md px-4 py-3 sticky top-0 z-40">
+        <div class="max-w-6xl mx-auto flex flex-wrap justify-between items-center gap-3">
+            
+            <!-- Branding -->
+            <div class="flex items-center gap-3">
+                <div class="bg-sky-500/10 border border-sky-400/40 p-2 rounded-xl text-sky-400">
+                    <i class="fa-solid fa-car-side text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg md:text-xl tracking-wider text-white flex items-center gap-2">
+                        AUTO-BUILD <span class="text-sky-400">2D</span>
+                        <span class="text-[10px] px-2 py-0.5 rounded bg-sky-500/20 border border-sky-400/30 text-sky-300 font-mono-tech">CAD BLUEPRINT</span>
+                    </h1>
+                    <p class="text-[11px] text-slate-400 font-mono-tech">Assemble 5 Core Mechanics in 30s</p>
+                </div>
+            </div>
+
+            <!-- Stats HUD -->
+            <div class="flex items-center gap-4">
+                <!-- Part Counter -->
+                <div class="bg-slate-900/90 px-3.5 py-1.5 rounded-xl border border-slate-800 flex items-center gap-3">
+                    <div>
+                        <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Parts</div>
+                        <div id="part-counter" class="font-mono-tech text-base font-bold text-sky-400">0 / 5</div>
+                    </div>
+                </div>
+
+                <!-- 30-Second Timer -->
+                <div id="timer-box" class="bg-slate-900/90 px-4 py-1.5 rounded-xl border border-sky-500/50 flex items-center gap-3 shadow-[0_0_15px_rgba(14,165,233,0.2)]">
+                    <i class="fa-solid fa-stopwatch text-sky-400 animate-pulse"></i>
+                    <div>
+                        <div class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Time Remaining</div>
+                        <div id="timer-display" class="font-mono-tech text-xl font-bold text-sky-400 tracking-wider">00:30</div>
+                    </div>
+                </div>
+
+                <!-- Controls -->
+                <div class="flex items-center gap-1.5">
+                    <button id="audio-btn" class="p-2 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-lg border border-slate-700 transition" title="Toggle Sound">
+                        <i id="audio-icon" class="fa-solid fa-volume-high text-sm"></i>
+                    </button>
+                    <button id="restart-btn" class="p-2 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-lg border border-slate-700 transition" title="Restart Game">
+                        <i class="fa-solid fa-rotate-right text-sm"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN GAME AREA -->
+    <main class="max-w-6xl mx-auto w-full p-3 md:p-4 flex-1 flex flex-col gap-3">
+        
+        <!-- Instruction Bar -->
+        <div class="bg-slate-950/80 rounded-xl p-2.5 border border-slate-800 flex flex-wrap justify-between items-center text-xs text-slate-300 gap-2">
+            <span class="flex items-center gap-2">
+                <i class="fa-solid fa-circle-info text-sky-400"></i>
+                <span>Select a core part from the bottom panel, then click its glowing CAD socket target on the chassis!</span>
+            </span>
+            <span id="game-status-tag" class="font-mono-tech text-sky-400 font-bold bg-sky-950/60 border border-sky-800 px-2.5 py-0.5 rounded uppercase text-[11px]">
+                BLUEPRINT READY
+            </span>
+        </div>
+
+        <!-- 2D CAD CANVAS VIEWPORT -->
+        <div id="canvas-container" class="relative w-full bg-slate-950 rounded-2xl border border-sky-900/40 shadow-2xl overflow-hidden h-[360px] md:h-[420px] flex items-center justify-center">
+            
+            <canvas id="blueprint-canvas"></canvas>
+
+            <!-- Dynamic 'START CAR' Button Overlay -->
+            <button id="start-car-btn" class="hidden absolute bottom-6 font-bold text-lg px-8 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl shadow-[0_0_25px_rgba(16,185,129,0.7)] border border-emerald-300 hover:scale-105 active:scale-95 transition-all duration-200 z-20 flex items-center gap-3">
+                <i class="fa-solid fa-key text-xl animate-bounce"></i>
+                START ENGINE & RUN
+            </button>
+        </div>
+
+        <!-- REDUCED CORE PARTS TRAY (5 COMPONENTS) -->
+        <div class="blueprint-card rounded-2xl p-3 shadow-xl">
+            <div class="flex items-center justify-between mb-2 px-1">
+                <h2 class="text-xs font-bold tracking-wider text-slate-300 uppercase flex items-center gap-2 font-mono-tech">
+                    <i class="fa-solid fa-microchip text-sky-400"></i> Core Vehicle Components (5 Parts)
+                </h2>
+                <span id="selected-part-hint" class="text-[11px] text-sky-400 font-mono-tech font-semibold">CLICK A COMPONENT TO SELECT</span>
+            </div>
+
+            <!-- 5 Parts Container -->
+            <div id="parts-dock" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+                <!-- Populated via JavaScript -->
+            </div>
+        </div>
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="max-w-6xl mx-auto w-full px-4 py-2 text-center text-xs text-slate-600 flex justify-between items-center border-t border-slate-900">
+        <div>AUTO-BUILD 2D &bull; Precision CAD Assembly</div>
+        <div>Engineered for Web & GitHub Pages</div>
+    </footer>
+
+    <!-- INTERACTIVE TOOLTIP -->
+    <div id="tooltip" class="fixed opacity-0 bg-slate-900/95 border border-sky-400/50 rounded-xl p-3 text-xs text-slate-200 max-w-xs z-50 pointer-events-none transition-opacity duration-150 shadow-2xl">
+        <div id="tooltip-title" class="font-bold text-sky-400 text-sm mb-0.5 font-mono-tech">Part Name</div>
+        <div id="tooltip-desc" class="text-slate-300 leading-snug font-sans">Description...</div>
+    </div>
+
+    <!-- GAME OVER / VICTORY MODAL -->
+    <div id="modal-overlay" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+        <div class="blueprint-card rounded-2xl max-w-md w-full p-6 text-center shadow-2xl relative overflow-hidden border-sky-500/50">
+            
+            <div id="modal-icon-wrap" class="w-16 h-16 mx-auto bg-sky-500/10 rounded-2xl border border-sky-500/30 flex items-center justify-center text-sky-400 text-3xl mb-3">
+                <i id="modal-icon" class="fa-solid fa-trophy"></i>
+            </div>
+
+            <h2 id="modal-title" class="font-bold text-2xl text-white mb-1">ASSEMBLY COMPLETE!</h2>
+            <p id="modal-subtitle" class="text-slate-400 text-xs mb-5 font-mono-tech">CAD Blueprint Diagnostics Passed</p>
+
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-2 gap-2.5 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 mb-5 text-left font-mono-tech text-xs">
+                <div>
+                    <div class="text-slate-500 uppercase">Completion Time</div>
+                    <div id="modal-time" class="text-base font-bold text-sky-400">00:14 s</div>
+                </div>
+                <div>
+                    <div class="text-slate-500 uppercase">Grade Rank</div>
+                    <div id="modal-score" class="text-base font-bold text-emerald-400">S-TIER CAD</div>
+                </div>
+                <div>
+                    <div class="text-slate-500 uppercase">Parts Fitted</div>
+                    <div id="modal-parts" class="text-slate-200">5 / 5 Parts</div>
+                </div>
+                <div>
+                    <div class="text-slate-500 uppercase">System Status</div>
+                    <div id="modal-status" class="text-emerald-400">OPERATIONAL</div>
+                </div>
+            </div>
+
+            <!-- Modal Action Buttons -->
+            <button id="modal-replay-btn" class="w-full py-3 px-4 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold font-mono-tech rounded-xl transition active:scale-95 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-rotate-right"></i> RESTART BLUEPRINT CHALLENGE
+            </button>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT GAME ENGINE -->
+    <script>
+        /* ------------------------------------------------------------------
+           1. WEB AUDIO SYNTHESIZER
+           ------------------------------------------------------------------ */
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                }
+            }
+
+            playSnap() {
+                if (this.muted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1200, this.ctx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.08);
+            }
+
+            playEngineStart() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(60, now);
+                osc.frequency.linearRampToValueAtTime(280, now + 1.2);
+                osc.frequency.linearRampToValueAtTime(180, now + 2.5);
+
+                gain.gain.setValueAtTime(0.01, now);
+                gain.gain.linearRampToValueAtTime(0.25, now + 0.4);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 2.5);
+            }
+
+            playBeep(isFinal = false) {
+                if (this.muted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(isFinal ? 880 : 440, this.ctx.currentTime);
+                gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.12);
+            }
+
+            playFanfare() {
+                if (this.muted || !this.ctx) return;
+                const notes = [261.63, 329.63, 392.00, 523.25];
+                notes.forEach((freq, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime + i * 0.08);
+                    gain.gain.setValueAtTime(0.2, this.ctx.currentTime + i * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + i * 0.08 + 0.3);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(this.ctx.currentTime + i * 0.08);
+                    osc.stop(this.ctx.currentTime + i * 0.08 + 0.3);
+                });
+            }
+        }
+
+        const audio = new SoundEngine();
+
+        /* ------------------------------------------------------------------
+           2. CORE COMPONENTS DEFINITION (EXACTLY 5 PARTS)
+           ------------------------------------------------------------------ */
+        const CORE_PARTS = [
+            {
+                id: 'engine',
+                name: 'Engine Block',
+                desc: 'V6 Internal combustion engine delivering primary drive power.',
+                icon: 'fa-bolt',
+                color: '#ef4444',
+                // Normalized canvas coordinates (x, y relative to chassis center)
+                target: { x: 0.22, y: -0.06, width: 90, height: 60 }
+            },
+            {
+                id: 'transmission',
+                name: 'Gearbox / Transmission',
+                desc: 'Converts torque and speed ratios from the engine to drive shaft.',
+                icon: 'fa-gears',
+                color: '#3b82f6',
+                target: { x: 0.05, y: -0.06, width: 65, height: 45 }
+            },
+            {
+                id: 'driveshaft',
+                name: 'Propeller Shaft',
+                desc: 'Rotational shaft transferring power from transmission to rear differential.',
+                icon: 'fa-arrows-left-right',
+                color: '#eab308',
+                target: { x: -0.15, y: -0.06, width: 120, height: 18 }
+            },
+            {
+                id: 'front_wheels',
+                name: 'Front Wheels',
+                desc: 'Front steering and braking wheel assemblies.',
+                icon: 'fa-compact-disc',
+                color: '#10b981',
+                target: { x: 0.28, y: 0.12, width: 55, height: 55 }
+            },
+            {
+                id: 'rear_wheels',
+                name: 'Rear Wheels',
+                desc: 'Rear driven wheel assemblies providing traction.',
+                icon: 'fa-compact-disc',
+                color: '#10b981',
+                target: { x: -0.28, y: 0.12, width: 55, height: 55 }
+            }
+        ];
+
+        /* ------------------------------------------------------------------
+           3. GAME STATE & CANVAS SETUP
+           ------------------------------------------------------------------ */
+        let canvas, ctx;
+        let selectedPartId = null;
+        let installedParts = new Set();
+        let timeRemaining = 30; // 30-second timer requirement
+        let timerInterval = null;
+        let isGameActive = false;
+        let isDrivingMode = false;
+        let wheelRotation = 0;
+        let exhaustParticles = [];
+
+        function initCanvas() {
+            canvas = document.getElementById('blueprint-canvas');
+            ctx = canvas.getContext('2d');
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            canvas.addEventListener('click', handleCanvasClick);
+        }
+
+        function resizeCanvas() {
+            const container = document.getElementById('canvas-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            drawScene();
+        }
+
+        /* ------------------------------------------------------------------
+           4. 2D CAD BLUEPRINT DRAWING ENGINE
+           ------------------------------------------------------------------ */
+        function drawScene() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const carScale = Math.min(canvas.width / 700, canvas.height / 400);
+
+            // 1. Draw CAD Dimension Grid Lines
+            drawCADBlueprintGrid(cx, cy, carScale);
+
+            // 2. Draw Main Vehicle Chassis Frame Blueprint
+            drawChassisOutline(cx, cy, carScale);
+
+            // 3. Draw Sockets (Target Ghosts or Installed Parts)
+            CORE_PARTS.forEach(part => {
+                const isInstalled = installedParts.has(part.id);
+                const isSelected = (selectedPartId === part.id);
+                const tx = cx + part.target.x * 550 * carScale;
+                const ty = cy + part.target.y * 220 * carScale;
+                const w = part.target.width * carScale;
+                const h = part.target.height * carScale;
+
+                if (isInstalled) {
+                    drawInstalledComponent(part, tx, ty, w, h, carScale);
+                } else {
+                    drawTargetSocket(part, tx, ty, w, h, isSelected, carScale);
+                }
+            });
+
+            // 4. Drive Simulation Exhaust / Speed FX
+            if (isDrivingMode) {
+                drawDrivingEffects(cx, cy, carScale);
+            }
+        }
+
+        /* Technical Blueprint Dimension Lines & Callouts */
+        function drawCADBlueprintGrid(cx, cy, scale) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(14, 165, 233, 0.25)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+
+            // Horizontal & Vertical Centerline
+            ctx.beginPath();
+            ctx.moveTo(0, cy + 80 * scale);
+            ctx.lineTo(canvas.width, cy + 80 * scale);
+            ctx.moveTo(cx, 0);
+            ctx.lineTo(cx, canvas.height);
+            ctx.stroke();
+
+            // Dimension Markers
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#38bdf8';
+            ctx.font = `${Math.max(10, 11 * scale)}px 'JetBrains Mono', monospace`;
+            ctx.fillText('LENGTH: 4250mm', cx - 180 * scale, cy - 130 * scale);
+            ctx.fillText('WHEELBASE: 2650mm', cx - 60 * scale, cy + 120 * scale);
+
+            // Dimension Arrows
+            ctx.beginPath();
+            ctx.moveTo(cx - 240 * scale, cy - 120 * scale);
+            ctx.lineTo(cx + 240 * scale, cy - 120 * scale);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        /* Neat Blueprint Chassis Wireframe */
+        function drawChassisOutline(cx, cy, scale) {
+            ctx.save();
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 2 * scale;
+            ctx.shadowColor = '#00f2fe';
+            ctx.shadowBlur = 8;
+
+            // Outer Car Body Silhouette
+            ctx.beginPath();
+            // Front Bumper
+            ctx.moveTo(cx + 260 * scale, cy + 30 * scale);
+            ctx.lineTo(cx + 260 * scale, cy - 20 * scale);
+            // Hood
+            ctx.lineTo(cx + 150 * scale, cy - 50 * scale);
+            // Windshield
+            ctx.lineTo(cx + 50 * scale, cy - 90 * scale);
+            // Roof
+            ctx.lineTo(cx - 90 * scale, cy - 90 * scale);
+            // Rear Window
+            ctx.lineTo(cx - 170 * scale, cy - 50 * scale);
+            // Trunk / Rear
+            ctx.lineTo(cx - 250 * scale, cy - 20 * scale);
+            ctx.lineTo(cx - 250 * scale, cy + 30 * scale);
+            // Bottom Floor Line
+            ctx.lineTo(cx + 260 * scale, cy + 30 * scale);
+            ctx.stroke();
+
+            // Inner Frame Skeleton
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+            ctx.lineWidth = 1 * scale;
+            ctx.shadowBlur = 0;
+            ctx.strokeRect(cx - 230 * scale, cy - 30 * scale, 460 * scale, 50 * scale);
+
+            ctx.restore();
+        }
+
+        /* Target Socket Marker */
+        function drawTargetSocket(part, x, y, w, h, isSelected, scale) {
+            ctx.save();
+            
+            if (isSelected) {
+                ctx.strokeStyle = '#22c55e'; // Green highlight when part selected
+                ctx.fillStyle = 'rgba(34, 197, 94, 0.15)';
+                ctx.lineWidth = 2.5;
+                ctx.shadowColor = '#22c55e';
+                ctx.shadowBlur = 12;
+            } else {
+                ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+                ctx.fillStyle = 'rgba(14, 165, 233, 0.05)';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([5, 5]);
+            }
+
+            // Draw Socket Box
+            ctx.beginPath();
+            ctx.roundRect(x - w / 2, y - h / 2, w, h, 8 * scale);
+            ctx.fill();
+            ctx.stroke();
+
+            // Socket Label
+            ctx.fillStyle = isSelected ? '#22c55e' : '#38bdf8';
+            ctx.font = `bold ${Math.max(9, 10 * scale)}px 'Chakra Petch', sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.fillText(part.name.toUpperCase(), x, y + 3 * scale);
+
+            ctx.restore();
+        }
+
+        /* Installed Part Renderer */
+        function drawInstalledComponent(part, x, y, w, h, scale) {
+            ctx.save();
+            ctx.translate(x, y);
+
+            if (part.id === 'engine') {
+                // Engine Render
+                ctx.fillStyle = '#ef4444';
+                ctx.fillRect(-w/2, -h/2, w, h);
+                ctx.fillStyle = '#dc2626';
+                ctx.fillRect(-w/2 + 5, -h/2 + 5, w - 10, h - 10);
+
+                // Intake Pipes
+                ctx.fillStyle = '#f87171';
+                for(let i = -w/3; i <= w/3; i += 15) {
+                    ctx.fillRect(i, -h/2 - 6, 8, 8);
+                }
+            } 
+            else if (part.id === 'transmission') {
+                // Gearbox Render
+                ctx.fillStyle = '#3b82f6';
+                ctx.beginPath();
+                ctx.moveTo(-w/2, -h/2);
+                ctx.lineTo(w/2, -h/3);
+                ctx.lineTo(w/2, h/3);
+                ctx.lineTo(-w/2, h/2);
+                ctx.closePath();
+                ctx.fill();
+            } 
+            else if (part.id === 'driveshaft') {
+                // Shaft Render
+                ctx.fillStyle = '#eab308';
+                ctx.fillRect(-w/2, -h/2, w, h);
+                // Revolving pattern line
+                ctx.strokeStyle = '#a16207';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(-w/2, 0);
+                ctx.lineTo(w/2, 0);
+                ctx.stroke();
+            } 
+            else if (part.id.includes('wheels')) {
+                // Wheel Assembly
+                ctx.save();
+                if (isDrivingMode) {
+                    ctx.rotate(wheelRotation);
+                }
+                // Tire
+                ctx.fillStyle = '#1e293b';
+                ctx.beginPath();
+                ctx.arc(0, 0, w/2, 0, Math.PI * 2);
+                ctx.fill();
+                // Alloy Rim
+                ctx.fillStyle = '#38bdf8';
+                ctx.beginPath();
+                ctx.arc(0, 0, w/3.5, 0, Math.PI * 2);
+                ctx.fill();
+                // Spokes
+                ctx.strokeStyle = '#030712';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(-w/2, 0); ctx.lineTo(w/2, 0);
+                ctx.moveTo(0, -w/2); ctx.lineTo(0, w/2);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            ctx.restore();
+        }
+
+        /* ------------------------------------------------------------------
+           5. INTERACTIVE DRIVE SIMULATION & PARTICLES
+           ------------------------------------------------------------------ */
+        function drawDrivingEffects(cx, cy, scale) {
+            // Spin wheels
+            wheelRotation += 0.25;
+
+            // Spawn Exhaust Particle Smoke
+            if (Math.random() < 0.8) {
+                exhaustParticles.push({
+                    x: cx - 250 * scale,
+                    y: cy + 10 * scale,
+                    vx: -(3 + Math.random() * 4),
+                    vy: (Math.random() - 0.5) * 1.5,
+                    size: 4 + Math.random() * 8,
+                    alpha: 0.8
+                });
+            }
+
+            // Draw Smoke Particles
+            ctx.save();
+            for (let i = exhaustParticles.length - 1; i >= 0; i--) {
+                const p = exhaustParticles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.size += 0.2;
+                p.alpha -= 0.03;
+
+                if (p.alpha <= 0) {
+                    exhaustParticles.splice(i, 1);
+                    continue;
+                }
+
+                ctx.fillStyle = `rgba(148, 163, 184, ${p.alpha})`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        /* ------------------------------------------------------------------
+           6. GAME PLAY MECHANICS & DOCK CONTROLLER
+           ------------------------------------------------------------------ */
+        function startSplashSequence() {
+            let splashTimeLeft = 5;
+            isGameActive = false;
+
+            const countdownEl = document.getElementById('splash-countdown');
+            const progressEl = document.getElementById('splash-progress-bar');
+            const splashOverlay = document.getElementById('splash-overlay');
+
+            countdownEl.innerText = "5";
+            progressEl.style.width = "0%";
+
+            const startTime = Date.now();
+            const duration = 5000; // 5 Seconds
+
+            const splashInterval = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                const progressPct = Math.min((elapsed / duration) * 100, 100);
+                progressEl.style.width = `${progressPct}%`;
+
+                const remainingSecs = Math.max(1, Math.ceil((duration - elapsed) / 1000));
+                
+                if (remainingSecs !== splashTimeLeft && remainingSecs > 0) {
+                    splashTimeLeft = remainingSecs;
+                    countdownEl.innerText = splashTimeLeft;
+                    audio.playBeep(false);
+                }
+
+                if (elapsed >= duration) {
+                    clearInterval(splashInterval);
+                    countdownEl.innerText = "GO!";
+                    audio.playBeep(true);
+
+                    splashOverlay.style.opacity = '0';
+                    splashOverlay.style.pointerEvents = 'none';
+
+                    setTimeout(() => {
+                        splashOverlay.classList.add('hidden');
+                        initGameTimer();
+                    }, 600);
+                }
+            }, 50);
+        }
+
+        function initGame() {
+            clearInterval(timerInterval);
+            timeRemaining = 30; // Exactly 30 seconds
+            installedParts.clear();
+            selectedPartId = null;
+            isGameActive = false;
+            isDrivingMode = false;
+            exhaustParticles = [];
+
+            // Reset Splash Overlay
+            const splashOverlay = document.getElementById('splash-overlay');
+            splashOverlay.classList.remove('hidden');
+            splashOverlay.style.opacity = '1';
+
+            // UI Reset
+            document.getElementById('part-counter').innerText = `0 / ${CORE_PARTS.length}`;
+            document.getElementById('timer-display').innerText = '00:30';
+            document.getElementById('game-status-tag').innerText = 'INITIALIZING...';
+            document.getElementById('start-car-btn').classList.add('hidden');
+            document.getElementById('modal-overlay').classList.add('hidden');
+
+            renderPartsDock();
+            drawScene();
+
+            startSplashSequence();
+        }
+
+        function initGameTimer() {
+            isGameActive = true;
+            document.getElementById('game-status-tag').innerText = '30S CHALLENGE ACTIVE';
+            timerInterval = setInterval(updateTimer, 1000);
+        }
+
+        /* Render Dock with exactly 5 parts */
+        function renderPartsDock() {
+            const dock = document.getElementById('parts-dock');
+            dock.innerHTML = '';
+
+            CORE_PARTS.forEach(part => {
+                const isInstalled = installedParts.has(part.id);
+
+                const card = document.createElement('div');
+                card.id = `dock-card-${part.id}`;
+                card.className = `blueprint-card part-item rounded-xl p-2.5 flex flex-col items-center justify-between ${isInstalled ? 'installed' : ''}`;
+
+                card.innerHTML = `
+                    <div class="w-8 h-8 rounded-lg flex items-center justify-center mb-1 text-base" style="background: ${part.color}20; color: ${part.color}">
+                        <i class="fa-solid ${part.icon}"></i>
+                    </div>
+                    <span class="font-bold text-xs text-slate-200 text-center leading-tight mb-1 font-mono-tech">${part.name}</span>
+                    <span class="text-[9px] text-slate-400 font-mono-tech uppercase">${isInstalled ? 'FITTED' : 'READY'}</span>
+                `;
+
+                card.addEventListener('mouseenter', (e) => showTooltip(e, part.name, part.desc));
+                card.addEventListener('mouseleave', hideTooltip);
+
+                card.addEventListener('click', () => {
+                    audio.init();
+                    if (isInstalled || !isGameActive || isDrivingMode) return;
+                    selectPart(part.id);
+                });
+
+                dock.appendChild(card);
+            });
+        }
+
+        function selectPart(id) {
+            selectedPartId = id;
+
+            CORE_PARTS.forEach(p => {
+                const card = document.getElementById(`dock-card-${p.id}`);
+                if (card && !installedParts.has(p.id)) {
+                    if (p.id === id) {
+                        card.classList.add('selected');
+                    } else {
+                        card.classList.remove('selected');
+                    }
+                }
+            });
+
+            const part = CORE_PARTS.find(p => p.id === id);
+            document.getElementById('selected-part-hint').innerText = `SELECTED: ${part.name.toUpperCase()} (CLICK TARGET SOCKET)`;
+            drawScene();
+        }
+
+        /* Canvas Socket Selection Click Handler */
+        function handleCanvasClick(e) {
+            if (!isGameActive || !selectedPartId || isDrivingMode) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const carScale = Math.min(canvas.width / 700, canvas.height / 400);
+
+            const part = CORE_PARTS.find(p => p.id === selectedPartId);
+            const tx = cx + part.target.x * 550 * carScale;
+            const ty = cy + part.target.y * 220 * carScale;
+            const w = part.target.width * carScale;
+            const h = part.target.height * carScale;
+
+            // Check if click is inside the target socket box
+            if (clickX >= tx - w/2 && clickX <= tx + w/2 &&
+                clickY >= ty - h/2 && clickY <= ty + h/2) {
+                
+                // Snap Part
+                installedParts.add(selectedPartId);
+                audio.playSnap();
+
+                selectedPartId = null;
+                document.getElementById('selected-part-hint').innerText = 'CLICK A COMPONENT TO SELECT';
+
+                document.getElementById('part-counter').innerText = `${installedParts.size} / ${CORE_PARTS.length}`;
+                renderPartsDock();
+                drawScene();
+
+                if (installedParts.size === CORE_PARTS.length) {
+                    triggerCarReady();
+                }
+            }
+        }
+
+        /* Trigger Start Car Drive Mode */
+        function triggerCarReady() {
+            document.getElementById('game-status-tag').innerText = 'ASSEMBLY COMPLETE!';
+            document.getElementById('game-status-tag').className = 'font-mono-tech text-emerald-400 font-bold bg-emerald-950/80 border border-emerald-600 px-2.5 py-0.5 rounded uppercase text-[11px] animate-pulse';
+            
+            document.getElementById('start-car-btn').classList.remove('hidden');
+        }
+
+        document.getElementById('start-car-btn').addEventListener('click', () => {
+            document.getElementById('start-car-btn').classList.add('hidden');
+            isDrivingMode = true;
+
+            audio.playEngineStart();
+
+            // Add Speed animation to container
+            document.getElementById('canvas-container').classList.add('speed-anim');
+
+            setTimeout(() => {
+                showVictoryModal();
+            }, 2500);
+        });
+
+        /* Game Loop Animation for Wheel Spin & Particles */
+        function gameLoop() {
+            if (isDrivingMode) {
+                drawScene();
+            }
+            requestAnimationFrame(gameLoop);
+        }
+
+        /* Timer Handler */
+        function updateTimer() {
+            if (!isGameActive || isDrivingMode) return;
+
+            timeRemaining--;
+            const secs = timeRemaining.toString().padStart(2, '0');
+            document.getElementById('timer-display').innerText = `00:${secs}`;
+
+            if (timeRemaining <= 5 && timeRemaining > 0) {
+                audio.playBeep(false);
+            }
+
+            if (timeRemaining <= 0) {
+                clearInterval(timerInterval);
+                audio.playBeep(true);
+                isGameActive = false;
+
+                if (installedParts.size === CORE_PARTS.length) {
+                    showVictoryModal();
+                } else {
+                    showTimeoutModal();
+                }
+            }
+        }
+
+        function showVictoryModal() {
+            clearInterval(timerInterval);
+            audio.playFanfare();
+
+            if (typeof confetti === 'function') {
+                confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+            }
+
+            const timeSpent = 30 - timeRemaining;
+            document.getElementById('modal-title').innerText = 'CHALLENGE COMPLETE!';
+            document.getElementById('modal-time').innerText = `${timeSpent}s`;
+            document.getElementById('modal-score').innerText = timeSpent < 15 ? 'S-TIER CAD' : 'A-TIER CAD';
+            document.getElementById('modal-parts').innerText = '5 / 5 Parts';
+            document.getElementById('modal-status').innerText = 'RUNNING';
+
+            document.getElementById('modal-overlay').classList.remove('hidden');
+        }
+
+        function showTimeoutModal() {
+            document.getElementById('modal-title').innerText = 'TIME EXPIRED!';
+            document.getElementById('modal-time').innerText = '30s';
+            document.getElementById('modal-score').innerText = 'FAILED';
+            document.getElementById('modal-parts').innerText = `${installedParts.size} / 5 Parts`;
+            document.getElementById('modal-status').innerText = 'INCOMPLETE';
+
+            document.getElementById('modal-overlay').classList.remove('hidden');
+        }
+
+        function showTooltip(e, title, desc) {
+            const tooltip = document.getElementById('tooltip');
+            document.getElementById('tooltip-title').innerText = title;
+            document.getElementById('tooltip-desc').innerText = desc;
+            tooltip.style.left = `${e.clientX + 12}px`;
+            tooltip.style.top = `${e.clientY + 12}px`;
+            tooltip.style.opacity = '1';
+        }
+
+        function hideTooltip() {
+            document.getElementById('tooltip').style.opacity = '0';
+        }
+
+        // Event Bindings
+        document.getElementById('restart-btn').addEventListener('click', initGame);
+        document.getElementById('modal-replay-btn').addEventListener('click', initGame);
+
+        document.getElementById('audio-btn').addEventListener('click', () => {
+            audio.muted = !audio.muted;
+            const icon = document.getElementById('audio-icon');
+            icon.className = audio.muted ? 'fa-solid fa-volume-xmark text-sm text-red-400' : 'fa-solid fa-volume-high text-sm';
+        });
+
+        // Initialize Engine
+        window.onload = () => {
+            initCanvas();
+            initGame();
+            gameLoop();
+        };
+    </script>
+</body>
+</html>
